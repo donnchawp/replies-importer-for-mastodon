@@ -1,19 +1,19 @@
 <?php
 /**
- * Admin functions for Mastodon Replies Importer
+ * Admin functions for Replies Importer for Mastodon
  *
- * @package MastodonRepliesImporter
+ * @package RepliesImporterForMastodon
  */
 
-class Mastodon_Replies_Importer_Admin {
-	use Mastodon_Replies_Importer_Logger;
+class Replies_Importer_For_Mastodon_Admin {
+	use Replies_Importer_For_Mastodon_Logger;
 
 	private $api;
 	private $config;
 
 	public function __construct() {
-		$this->api    = new Mastodon_Replies_Importer_API();
-		$this->config = Mastodon_Replies_Importer_Config::get_instance();
+		$this->api    = new Replies_Importer_For_Mastodon_API();
+		$this->config = Replies_Importer_For_Mastodon_Config::get_instance();
 	}
 
 	public function init() {
@@ -28,10 +28,10 @@ class Mastodon_Replies_Importer_Admin {
 	 */
 	public function add_admin_menu() {
 		add_options_page(
-			__( 'Mastodon Replies Settings', 'mastodon-replies-importer' ),
-			__( 'Mastodon Replies Importer', 'mastodon-replies-importer' ),
+			__( 'Replies Importer for Mastodon Settings', 'replies_importer_for_mastodon' ),
+			__( 'Replies Importer for Mastodon', 'replies_importer_for_mastodon' ),
 			'manage_options',
-			'mastodon_replies_importer',
+			'replies_importer_for_mastodon',
 			array( $this, 'options_page' )
 		);
 	}
@@ -45,34 +45,34 @@ class Mastodon_Replies_Importer_Admin {
 			$type    = 'updated';
 			switch ( $_GET['message'] ) { // phpcs:ignore WordPress.Security.NonceVerification
 				case 'instance_url_saved':
-					$message = __( 'Instance URL saved successfully.', 'mastodon-replies-importer' );
+					$message = __( 'Instance URL saved successfully.', 'replies_importer_for_mastodon' );
 					break;
 				case 'schedule_updated':
-					$message = __( 'Import schedule updated successfully.', 'mastodon-replies-importer' );
+					$message = __( 'Import schedule updated successfully.', 'replies_importer_for_mastodon' );
 					break;
 				case 'schedule_removed':
-					$message = __( 'Scheduled import removed.', 'mastodon-replies-importer' );
+					$message = __( 'Scheduled import removed.', 'replies_importer_for_mastodon' );
 					break;
 				case 'import_initiated':
-					$message = __( 'Mastodon replies import initiated.', 'mastodon-replies-importer' );
+					$message = __( 'Mastodon replies import initiated.', 'replies_importer_for_mastodon' );
 					break;
 				case 'auth_success':
-					$message = __( 'Successfully authenticated with Mastodon.', 'mastodon-replies-importer' );
+					$message = __( 'Successfully authenticated with Mastodon.', 'replies_importer_for_mastodon' );
 					break;
 			}
 			if ( ! empty( $message ) ) {
 				echo "<div class='" . esc_attr( $type ) . "'><p>" . esc_html( $message ) . '</p></div>';
 			}
 		}
-		settings_errors( 'mastodon_replies_importer_messages' );
+		settings_errors( 'replies_importer_for_mastodon_messages' );
 		?>
 		<div class="wrap">
-			<h2><?php esc_html_e( 'Mastodon Replies Importer Settings', 'mastodon-replies-importer' ); ?></h2>
+			<h2><?php esc_html_e( 'Replies Importer for Mastodon Settings', 'replies_importer_for_mastodon' ); ?></h2>
 			<form action='options.php' method='post'>
 				<?php
-				settings_fields( 'mastodon_replies_importer_plugin' );
-				do_settings_sections( 'mastodon_replies_importer_plugin' );
-				submit_button( __( 'Save Settings', 'mastodon-replies-importer' ) );
+				settings_fields( 'replies_importer_for_mastodon_plugin' );
+				do_settings_sections( 'replies_importer_for_mastodon_plugin' );
+				submit_button( __( 'Save Settings', 'replies_importer_for_mastodon' ) );
 				?>
 			</form>
 			<?php
@@ -80,25 +80,25 @@ class Mastodon_Replies_Importer_Admin {
 				$auth_url = $this->api->get_authorization_url( $this->config->get( 'mastodon_instance_url' ) );
 				$this->debug_log( 'auth_url: ' . $auth_url );
 				if ( $auth_url ) {
-					echo "<a href='" . esc_url( $auth_url ) . "' class='button button-primary'>" . esc_html__( 'Authorize with Mastodon', 'mastodon-replies-importer' ) . '</a>';
+					echo "<a href='" . esc_url( $auth_url ) . "' class='button button-primary'>" . esc_html__( 'Authorize with Mastodon', 'replies_importer_for_mastodon' ) . '</a>';
 				}
 			} elseif ( ! empty( $this->config->get_connection_option( 'access_token' ) ) ) {
-				esc_html_e( 'Successfully authenticated with Mastodon.', 'mastodon-replies-importer' );
+				esc_html_e( 'Successfully authenticated with Mastodon.', 'replies_importer_for_mastodon' );
 				?>
 				<form action='' method='post'>
-					<?php wp_nonce_field( 'mastodon_replies_importer_check_now', 'mastodon_replies_importer_nonce' ); ?>
-					<h3><?php esc_html_e( 'Manual Import', 'mastodon-replies-importer' ); ?></h3>
-					<?php submit_button( __( 'Check Now', 'mastodon-replies-importer' ), 'secondary', 'check_now' ); ?>
+					<?php wp_nonce_field( 'replies_importer_for_mastodon_check_now', 'replies_importer_for_mastodon_nonce' ); ?>
+					<h3><?php esc_html_e( 'Manual Import', 'replies_importer_for_mastodon' ); ?></h3>
+					<?php submit_button( __( 'Check Now', 'replies_importer_for_mastodon' ), 'secondary', 'check_now' ); ?>
 				</form>
 				<form action='' method='post'>
-					<?php wp_nonce_field( 'mastodon_replies_importer_disconnect', 'mastodon_replies_importer_nonce' ); ?>
-					<?php submit_button( __( 'Disconnect', 'mastodon-replies-importer' ), 'secondary', 'disconnect' ); ?>
+					<?php wp_nonce_field( 'replies_importer_for_mastodon_disconnect', 'replies_importer_for_mastodon_nonce' ); ?>
+					<?php submit_button( __( 'Disconnect', 'replies_importer_for_mastodon' ), 'secondary', 'disconnect' ); ?>
 				</form>
 				<?php
-				$next_scheduled = wp_next_scheduled( 'mastodon_import_event' );
+				$next_scheduled = wp_next_scheduled( 'replies_importer_for_mastodon_event' );
 				if ( $next_scheduled ) {
 					// translators: %s is the next scheduled import date and time.
-					echo '<p>' . esc_html( sprintf( __( 'Next import scheduled for: %s', 'mastodon-replies-importer' ), date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $next_scheduled ) ) ) . '</p>';
+					echo '<p>' . esc_html( sprintf( __( 'Next import scheduled for: %s', 'replies_importer_for_mastodon' ), date_i18n( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $next_scheduled ) ) ) . '</p>';
 				}
 			}
 			?>
@@ -111,8 +111,8 @@ class Mastodon_Replies_Importer_Admin {
 	 */
 	public function debug_mode_render() {
 		?>
-		<input type='checkbox' name='mastodon_replies_importer_settings[debug_mode]' <?php checked( $this->config->get( 'debug_mode' ), true ); ?>>
-		<label for="mastodon_replies_importer_settings[debug_mode]"><?php esc_html_e( 'Enable debug logging', 'mastodon-replies-importer' ); ?></label>
+		<input type='checkbox' name='replies_importer_for_mastodon_settings[debug_mode]' <?php checked( $this->config->get( 'debug_mode' ), true ); ?>>
+		<label for="replies_importer_for_mastodon_settings[debug_mode]"><?php esc_html_e( 'Enable debug logging', 'replies_importer_for_mastodon' ); ?></label>
 		<?php
 	}
 
@@ -121,10 +121,10 @@ class Mastodon_Replies_Importer_Admin {
 	 */
 	public function schedule_period_render() {
 		?>
-		<select name='mastodon_replies_importer_settings[schedule_period]'>
-			<option value='hourly' <?php selected( $this->config->get( 'schedule_period' ), 'hourly' ); ?>><?php esc_html_e( 'Once an Hour', 'mastodon-replies-importer' ); ?></option>
-			<option value='daily' <?php selected( $this->config->get( 'schedule_period' ), 'daily' ); ?>><?php esc_html_e( 'Once a Day', 'mastodon-replies-importer' ); ?></option>
-			<option value='disabled' <?php selected( $this->config->get( 'schedule_period' ), 'disabled' ); ?>><?php esc_html_e( 'Disabled', 'mastodon-replies-importer' ); ?></option>
+		<select name='replies_importer_for_mastodon_settings[schedule_period]'>
+			<option value='hourly' <?php selected( $this->config->get( 'schedule_period' ), 'hourly' ); ?>><?php esc_html_e( 'Once an Hour', 'replies_importer_for_mastodon' ); ?></option>
+			<option value='daily' <?php selected( $this->config->get( 'schedule_period' ), 'daily' ); ?>><?php esc_html_e( 'Once a Day', 'replies_importer_for_mastodon' ); ?></option>
+			<option value='disabled' <?php selected( $this->config->get( 'schedule_period' ), 'disabled' ); ?>><?php esc_html_e( 'Disabled', 'replies_importer_for_mastodon' ); ?></option>
 		</select>
 		<?php
 	}
@@ -136,7 +136,7 @@ class Mastodon_Replies_Importer_Admin {
 		$this->debug_log( 'instance_url_render: ' . print_r( $this->config->get( 'mastodon_instance_url' ), true ) );
 		?>
 		<input type='hidden' name='save_instance_url' value='1'>
-		<input type='text' name='mastodon_replies_importer_settings[mastodon_instance_url]' value='<?php echo esc_attr( $this->config->get( 'mastodon_instance_url' ) ); ?>' style="width: 300px;">
+		<input type='text' name='replies_importer_for_mastodon_settings[mastodon_instance_url]' value='<?php echo esc_attr( $this->config->get( 'mastodon_instance_url' ) ); ?>' style="width: 300px;">
 		<?php
 	}
 
@@ -144,7 +144,7 @@ class Mastodon_Replies_Importer_Admin {
 	 * Render the settings section callback.
 	 */
 	public function settings_section_callback() {
-		esc_html_e( 'Enter your Mastodon instance URL below:', 'mastodon-replies-importer' );
+		esc_html_e( 'Enter your Mastodon instance URL below:', 'replies_importer_for_mastodon' );
 	}
 
 	/**
@@ -152,40 +152,40 @@ class Mastodon_Replies_Importer_Admin {
 	 */
 	public function settings_init() {
 		register_setting(
-			'mastodon_replies_importer_plugin',
-			'mastodon_replies_importer_settings',
+			'replies_importer_for_mastodon_plugin',
+			'replies_importer_for_mastodon_settings',
 			array( $this, 'sanitize_settings' )
 		);
 
 		add_settings_section(
-			'mastodon_replies_importer_plugin_section',
-			__( 'Mastodon Account Settings', 'mastodon-replies-importer' ),
+			'replies_importer_for_mastodon_plugin_section',
+			__( 'Mastodon Account Settings', 'replies_importer_for_mastodon' ),
 			array( $this, 'settings_section_callback' ),
-			'mastodon_replies_importer_plugin'
+			'replies_importer_for_mastodon_plugin'
 		);
 
 		add_settings_field(
 			'mastodon_instance_url',
-			__( 'Mastodon Instance URL', 'mastodon-replies-importer' ),
+			__( 'Mastodon Instance URL', 'replies_importer_for_mastodon' ),
 			array( $this, 'instance_url_render' ),
-			'mastodon_replies_importer_plugin',
-			'mastodon_replies_importer_plugin_section'
+			'replies_importer_for_mastodon_plugin',
+			'replies_importer_for_mastodon_plugin_section'
 		);
 
 		add_settings_field(
 			'debug_mode',
-			__( 'Debug Mode', 'mastodon-replies-importer' ),
+			__( 'Debug Mode', 'replies_importer_for_mastodon' ),
 			array( $this, 'debug_mode_render' ),
-			'mastodon_replies_importer_plugin',
-			'mastodon_replies_importer_plugin_section'
+			'replies_importer_for_mastodon_plugin',
+			'replies_importer_for_mastodon_plugin_section'
 		);
 
 		add_settings_field(
 			'schedule_period',
-			__( 'Import Schedule', 'mastodon-replies-importer' ),
+			__( 'Import Schedule', 'replies_importer_for_mastodon' ),
 			array( $this, 'schedule_period_render' ),
-			'mastodon_replies_importer_plugin',
-			'mastodon_replies_importer_plugin_section'
+			'replies_importer_for_mastodon_plugin',
+			'replies_importer_for_mastodon_plugin_section'
 		);
 	}
 
@@ -211,7 +211,7 @@ class Mastodon_Replies_Importer_Admin {
 
 		// Schedule or remove the import event based on the selected option
 		if ( 'disabled' === $sanitized_input['schedule_period'] ) {
-			wp_clear_scheduled_hook( 'mastodon_import_event' );
+			wp_clear_scheduled_hook( 'replies_importer_for_mastodon_event' );
 		} else {
 			$this->schedule_import();
 		}
@@ -224,15 +224,15 @@ class Mastodon_Replies_Importer_Admin {
 	 */
 	public function handle_actions() {
 		$this->debug_log( '1 handle_actions' . print_r( $_GET, true ) . print_r( $_POST, true ) ); // phpcs:ignore WordPress.Security.NonceVerification
-		if ( ! isset( $_GET['page'] ) || 'mastodon_replies_importer' !== $_GET['page'] ) { // phpcs:ignore WordPress.Security.NonceVerification
+		if ( ! isset( $_GET['page'] ) || 'replies_importer_for_mastodon' !== $_GET['page'] ) { // phpcs:ignore WordPress.Security.NonceVerification
 			return;
 		}
 		$this->debug_log( '2 handle_actions' );
 
 		if (
 			isset( $_POST['check_now'] ) &&
-			isset( $_POST['mastodon_replies_importer_nonce'] ) &&
-			wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['mastodon_replies_importer_nonce'] ) ), 'mastodon_replies_importer_check_now' )
+			isset( $_POST['replies_importer_for_mastodon_nonce'] ) &&
+			wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['replies_importer_for_mastodon_nonce'] ) ), 'replies_importer_for_mastodon_check_now' )
 		) {
 			$this->api->fetch_and_import_mastodon_comments();
 			wp_safe_redirect( add_query_arg( 'message', 'import_initiated', remove_query_arg( 'code' ) ) );
@@ -241,8 +241,8 @@ class Mastodon_Replies_Importer_Admin {
 
 		if (
 			isset( $_POST['disconnect'] ) &&
-			isset( $_POST['mastodon_replies_importer_nonce'] ) &&
-			wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['mastodon_replies_importer_nonce'] ) ), 'mastodon_replies_importer_disconnect' )
+			isset( $_POST['replies_importer_for_mastodon_nonce'] ) &&
+			wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['replies_importer_for_mastodon_nonce'] ) ), 'replies_importer_for_mastodon_disconnect' )
 		) {
 			$this->api->disconnect();
 			wp_safe_redirect( add_query_arg( 'message', 'disconnect', remove_query_arg( 'code' ) ) );
@@ -264,11 +264,11 @@ class Mastodon_Replies_Importer_Admin {
 	}
 
 	public function schedule_import() {
-		wp_clear_scheduled_hook( 'mastodon_import_event' );
+		wp_clear_scheduled_hook( 'replies_importer_for_mastodon_event' );
 		if ( 'hourly' === $this->config->get( 'schedule_period' ) ) {
-			wp_schedule_event( time() + 10, 'hourly', 'mastodon_import_event' );
+			wp_schedule_event( time() + 10, 'hourly', 'replies_importer_for_mastodon_event' );
 		} else {
-			wp_schedule_event( time() + 10, 'daily', 'mastodon_import_event' );
+			wp_schedule_event( time() + 10, 'daily', 'replies_importer_for_mastodon_event' );
 		}
 	}
 }

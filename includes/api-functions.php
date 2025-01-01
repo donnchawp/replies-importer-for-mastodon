@@ -34,7 +34,7 @@ class Replies_Importer_For_Mastodon_API {
 					add_settings_error(
 						'replies_importer_for_mastodon_messages',
 						'mastodon_app_creation_error',
-						__( 'Error creating Mastodon app: Too many requests. Please try again later.', 'replies_importer_for_mastodon' ),
+						__( 'Error creating Mastodon app: Too many requests. Please try again later.', 'replies-importer-for-mastodon' ),
 						'error'
 					);
 				}
@@ -122,7 +122,7 @@ class Replies_Importer_For_Mastodon_API {
 
 		if ( empty( $this->config->get( 'mastodon_instance_url' ) ) || empty( $this->config->get_connection_option( 'access_token' ) ) ) {
 			$this->debug_log( 'url or access token is missing' );
-			return __( 'Mastodon instance URL or access token is missing.', 'replies_importer_for_mastodon' );
+			return __( 'Mastodon instance URL or access token is missing.', 'replies-importer-for-mastodon' );
 		}
 
 		$website_url = home_url();
@@ -141,7 +141,7 @@ class Replies_Importer_For_Mastodon_API {
 
 		if ( is_wp_error( $user_info ) ) {
 			$this->debug_log( 'user info error: ' . $user_info->get_error_message() );
-			return __( 'Failed to retrieve user information: ', 'replies_importer_for_mastodon' ) . $user_info->get_error_message();
+			return __( 'Failed to retrieve user information: ', 'replies-importer-for-mastodon' ) . $user_info->get_error_message();
 		}
 
 		$user_data        = json_decode( wp_remote_retrieve_body( $user_info ), true );
@@ -150,7 +150,7 @@ class Replies_Importer_For_Mastodon_API {
 		$response = wp_remote_get( $mastodon_rss_url );
 		if ( is_wp_error( $response ) ) {
 			$this->debug_log( 'fetching rss error: ' . $response->get_error_message() );
-			return __( 'Failed to retrieve Mastodon RSS feed: ', 'replies_importer_for_mastodon' ) . $response->get_error_message();
+			return __( 'Failed to retrieve Mastodon RSS feed: ', 'replies-importer-for-mastodon' ) . $response->get_error_message();
 		}
 
 		$rss_body = wp_remote_retrieve_body( $response );
@@ -253,7 +253,7 @@ class Replies_Importer_For_Mastodon_API {
 	 */
 	public function disconnect() {
 		if ( empty( $this->config->get( 'mastodon_instance_url' ) ) || empty( $this->config->get_connection_option( 'access_token' ) ) ) {
-			return esc_html__( 'Mastodon instance URL or access token is missing.', 'replies_importer_for_mastodon' );
+			return esc_html__( 'Mastodon instance URL or access token is missing.', 'replies-importer-for-mastodon' );
 		}
 
 		$api_url  = $this->config->get( 'mastodon_instance_url' ) . '/api/v1/accounts/verify_credentials';
@@ -265,7 +265,7 @@ class Replies_Importer_For_Mastodon_API {
 		);
 		if ( is_wp_error( $response ) ) {
 			$this->debug_log( 'error: ' . $response->get_error_message() );
-			return esc_html__( 'Failed to retrieve user information: ', 'replies_importer_for_mastodon' ) . $response->get_error_message();
+			return esc_html__( 'Failed to retrieve user information: ', 'replies-importer-for-mastodon' ) . $response->get_error_message();
 		}
 		$revoke_url      = $this->config->get( 'mastodon_instance_url' ) . '/oauth/revoke';
 		$revoke_response = wp_remote_post(
@@ -280,7 +280,7 @@ class Replies_Importer_For_Mastodon_API {
 		);
 		if ( is_wp_error( $revoke_response ) ) {
 			$this->debug_log( 'error: ' . $revoke_response->get_error_message() );
-			return esc_html__( 'Failed to revoke access token: ', 'replies_importer_for_mastodon' ) . $revoke_response->get_error_message();
+			return esc_html__( 'Failed to revoke access token: ', 'replies-importer-for-mastodon' ) . $revoke_response->get_error_message();
 		}
 		$this->config->delete_connection();
 	}

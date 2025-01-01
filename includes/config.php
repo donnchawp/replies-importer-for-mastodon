@@ -1,16 +1,16 @@
 <?php
 
 /**
- * Configuration class for Mastodon Replies Importer
+ * Configuration class for Replies Importer for Mastodon
  *
- * @package MastodonRepliesImporter
+ * @package RepliesImporterForMastodon
  */
 
-class Mastodon_Replies_Importer_Config {
+class Replies_Importer_For_Mastodon_Config {
 	/**
 	 * Instance of this class.
 	 *
-	 * @var Mastodon_Replies_Importer_Config
+	 * @var Replies_Importer_For_Mastodon_Config
 	 */
 	private static $instance = null;
 
@@ -32,14 +32,14 @@ class Mastodon_Replies_Importer_Config {
 	 * Constructor.
 	 */
 	private function __construct() {
-		$this->options            = get_option( 'mastodon_replies_importer_settings', array() );
-		$this->connection_options = get_option( 'mastodon_replies_importer_connection', array() );
+		$this->options            = get_option( 'replies_importer_for_mastodon_settings', array() );
+		$this->connection_options = get_option( 'replies_importer_for_mastodon_connection', array() );
 	}
 
 	/**
 	 * Get instance of this class.
 	 *
-	 * @return Mastodon_Replies_Importer_Config
+	 * @return Replies_Importer_For_Mastodon_Config
 	 */
 	public static function get_instance() {
 		if ( null === self::$instance ) {
@@ -81,7 +81,7 @@ class Mastodon_Replies_Importer_Config {
 	public function set( $key, $value ) {
 		$instance = self::get_instance();
 		$instance->options[ $key ] = $value;
-		update_option( 'mastodon_replies_importer_settings', $instance->options );
+		update_option( 'replies_importer_for_mastodon_settings', $instance->options );
 	}
 
 	/**
@@ -93,13 +93,13 @@ class Mastodon_Replies_Importer_Config {
 	public function set_connection_option( $key, $value ) {
 		$instance = self::get_instance();
 		$instance->connection_options[ $key ] = $value;
-		update_option( 'mastodon_replies_importer_connection', $instance->connection_options );
+		update_option( 'replies_importer_for_mastodon_connection', $instance->connection_options );
 	}
 
 	/**
 	 * Delete connection options.
 	 */
 	public function delete_connection() {
-		delete_option( 'mastodon_replies_importer_connection' );
+		delete_option( 'replies_importer_for_mastodon_connection' );
 	}
 }

@@ -14,7 +14,7 @@ class Mastodon_Replies_Importer_API {
 	}
 
 	public function init() {
-		add_action( 'mastodon_import_event', array( $this, 'fetch_and_import_mastodon_comments' ) );
+		add_action( 'replies_importer_for_mastodon_event', array( $this, 'fetch_and_import_mastodon_comments' ) );
 	}
 
 	/**

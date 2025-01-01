@@ -64,7 +64,7 @@ class Replies_Importer_For_Mastodon_API {
 			$instance_url . '/api/v1/apps',
 			array(
 				'body' => array(
-					'client_name'   => 'Mastodon Replies Importer',
+					'client_name'   => 'Replies Importer for Mastodon',
 					'redirect_uris' => admin_url( 'options-general.php?page=replies_importer_for_mastodon' ),
 					'scopes'        => 'read',
 					'website'       => get_site_url(),

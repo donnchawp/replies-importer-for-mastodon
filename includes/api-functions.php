@@ -228,9 +228,9 @@ class Replies_Importer_For_Mastodon_API {
 
 					$commentdata = array(
 						'comment_post_ID'    => $post_id,
-						'comment_author'     => $reply['account']['display_name'],
+						'comment_author'     => wp_kses_post( $reply['account']['display_name'] ),
 						'comment_author_url' => $reply['url'],
-						'comment_content'    => wp_strip_all_tags( $reply['content'] ),
+						'comment_content'    => wp_kses_post( wp_strip_all_tags( $reply['content'] ) ),
 						'comment_type'       => '',
 						'comment_parent'     => $comment_parent,
 						'user_id'            => 0,
@@ -241,7 +241,7 @@ class Replies_Importer_For_Mastodon_API {
 					);
 
 					// Insert new comment and get the new comment ID
-					$comment_id                   = wp_insert_comment( $commentdata );
+					$comment_id                   = wp_insert_comment( wp_filter_comment( $commentdata ) );
 					$comment_map[ $reply['id'] ]  = $comment_id;
 				}
 			}

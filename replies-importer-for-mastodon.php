@@ -26,6 +26,7 @@ define( 'REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_URL', plugin_dir_url( __FILE__ ) )
 // Include necessary files.
 require_once REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR . 'includes/debug.php';
 require_once REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR . 'includes/config.php';
+require_once REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR . 'includes/comment-types.php';
 require_once REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR . 'includes/admin-functions.php';
 require_once REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR . 'includes/api-functions.php';
 
@@ -33,5 +34,7 @@ require_once REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR . 'includes/api-functions.
 function replies_importer_for_mastodon_init() {
 	$admin_functions = new Replies_Importer_For_Mastodon_Admin();
 	$admin_functions->init();
+
+	Replies_Importer_For_Mastodon_Comment_Types::init();
 }
 add_action( 'plugins_loaded', 'replies_importer_for_mastodon_init' );

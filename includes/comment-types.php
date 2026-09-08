@@ -124,6 +124,140 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 		add_filter( 'pre_wp_update_comment_count_now', array( __CLASS__, 'exclude_from_comment_count' ), 5, 3 );
 		add_filter( 'get_avatar_comment_types', array( __CLASS__, 'get_avatar_comment_types' ), 99 );
 		add_filter( 'pre_get_avatar_data', array( __CLASS__, 'pre_get_avatar_data' ), 11, 2 );
+		add_filter( 'the_content', array( __CLASS__, 'append_reactions' ), 20 );
+		add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_styles' ) );
+	}
+
+	/**
+	 * Register the facepile styles.
+	 *
+	 * Registered rather than enqueued so the stylesheet only loads on posts that
+	 * actually have reactions to show.
+	 */
+	public static function enqueue_styles() {
+		wp_register_style(
+			'replies-importer-for-mastodon',
+			REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_URL . 'assets/reactions.css',
+			array(),
+			REPLIES_IMPORTER_FOR_MASTODON_VERSION
+		);
+	}
+
+	/**
+	 * Append the reactions facepile to the post content.
+	 *
+	 * Hooking `the_content` puts the facepile between the post and the comments in
+	 * both classic and block themes, without replacing the comments template.
+	 *
+	 * @param string $content The post content.
+	 * @return string The content, with the facepile appended where there is one.
+	 */
+	public static function append_reactions( $content ) {
+		if ( ! is_singular() || ! in_the_loop() || ! is_main_query() ) {
+			return $content;
+		}
+
+		return $content . self::render_reactions( get_the_ID() );
+	}
+
+	/**
+	 * Render the reactions facepile for a post.
+	 *
+	 * @param int $post_id The post ID.
+	 * @return string The markup, or an empty string if the post has no reactions.
+	 */
+	public static function render_reactions( $post_id ) {
+		$sections = '';
+
+		foreach ( self::get_types() as $slug => $type ) {
+			$comments = get_comments(
+				array(
+					'post_id' => $post_id,
+					'type'    => $slug,
+					'status'  => 'approve',
+				)
+			);
+
+			if ( empty( $comments ) ) {
+				continue;
+			}
+
+			$count = count( $comments );
+			$label = sprintf(
+				// phpcs:ignore WordPress.WP.I18n
+				_n( $type['count_single'], $type['count_plural'], $count, 'replies-importer-for-mastodon' ),
+				number_format_i18n( $count )
+			);
+
+			$sections .= sprintf(
+				'<div class="rifm-reactions__group rifm-reactions__group--%1$s"><h3 class="rifm-reactions__label"><span class="rifm-reactions__icon" aria-hidden="true">%2$s</span> %3$s</h3>%4$s</div>',
+				esc_attr( $slug ),
+				wp_kses_post( $type['icon'] ),
+				esc_html( $label ),
+				self::QUOTE === $slug ? self::render_quotes( $comments ) : self::render_facepile( $comments )
+			);
+		}
+
+		if ( '' === $sections ) {
+			return '';
+		}
+
+		wp_enqueue_style( 'replies-importer-for-mastodon' );
+
+		return sprintf(
+			'<div class="rifm-reactions"><h2 class="screen-reader-text">%s</h2>%s</div>',
+			esc_html__( 'Reactions from Mastodon', 'replies-importer-for-mastodon' ),
+			$sections
+		);
+	}
+
+	/**
+	 * Render a row of avatars linking to the reacting accounts.
+	 *
+	 * @param WP_Comment[] $comments The reaction comments.
+	 * @return string The markup.
+	 */
+	private static function render_facepile( $comments ) {
+		$items = '';
+
+		foreach ( $comments as $comment ) {
+			$avatar = get_avatar( $comment, 40, '', $comment->comment_author );
+
+			if ( ! $avatar ) {
+				continue;
+			}
+
+			$items .= sprintf(
+				'<li class="rifm-reactions__face"><a href="%1$s" title="%2$s" rel="nofollow external">%3$s</a></li>',
+				esc_url( $comment->comment_author_url ),
+				esc_attr( $comment->comment_author ),
+				$avatar
+			);
+		}
+
+		return '<ul class="rifm-reactions__faces">' . $items . '</ul>';
+	}
+
+	/**
+	 * Render quotes as short excerpt cards.
+	 *
+	 * @param WP_Comment[] $comments The quote comments.
+	 * @return string The markup.
+	 */
+	private static function render_quotes( $comments ) {
+		$items = '';
+
+		foreach ( $comments as $comment ) {
+			$items .= sprintf(
+				'<li class="rifm-reactions__quote">%1$s<div class="rifm-reactions__quote-body"><a class="rifm-reactions__quote-author" href="%2$s" rel="nofollow external">%3$s</a><p class="rifm-reactions__quote-text">%4$s</p></div></li>',
+				get_avatar( $comment, 40, '', $comment->comment_author ),
+				esc_url( $comment->comment_author_url ),
+				esc_html( $comment->comment_author ),
+				esc_html( wp_trim_words( $comment->comment_content, 30 ) )
+			);
+		}
+
+		return '<ul class="rifm-reactions__quotes">' . $items . '</ul>';
 	}
 
 	/**

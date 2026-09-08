@@ -1,0 +1,77 @@
+/**
+ * Styles for the Mastodon reactions facepile.
+ *
+ * Only loaded when the ActivityPub plugin is inactive and a post has reactions.
+ */
+
+.rifm-reactions {
+	margin: 2em 0;
+}
+
+.rifm-reactions__group + .rifm-reactions__group {
+	margin-top: 1.5em;
+}
+
+.rifm-reactions__label {
+	font-size: 1rem;
+	font-weight: 600;
+	margin: 0 0 0.5em;
+}
+
+.rifm-reactions__icon {
+	margin-right: 0.25em;
+}
+
+.rifm-reactions__faces {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35em;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.rifm-reactions__face a {
+	box-shadow: none;
+	display: block;
+	text-decoration: none;
+}
+
+.rifm-reactions__face img {
+	border-radius: 50%;
+	display: block;
+	height: 40px;
+	width: 40px;
+}
+
+.rifm-reactions__quotes {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75em;
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+.rifm-reactions__quote {
+	border: 1px solid currentColor;
+	border-radius: 6px;
+	display: flex;
+	gap: 0.75em;
+	opacity: 0.95;
+	padding: 0.75em;
+}
+
+.rifm-reactions__quote img {
+	border-radius: 50%;
+	height: 40px;
+	width: 40px;
+}
+
+.rifm-reactions__quote-author {
+	font-weight: 600;
+}
+
+.rifm-reactions__quote-text {
+	margin: 0.25em 0 0;
+}

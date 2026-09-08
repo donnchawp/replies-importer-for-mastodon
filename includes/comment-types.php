@@ -273,8 +273,15 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 			return;
 		}
 
+		// wp_is_serving_rest_request() is WordPress 6.5 and later; the plugin supports 5.0.
+		if ( function_exists( 'wp_is_serving_rest_request' ) ) {
+			$is_rest = wp_is_serving_rest_request();
+		} else {
+			$is_rest = defined( 'REST_REQUEST' ) && REST_REQUEST;
+		}
+
 		// The admin comments screen should still show them, so they can be moderated.
-		if ( is_admin() || wp_is_serving_rest_request() ) {
+		if ( is_admin() || $is_rest ) {
 			return;
 		}
 

@@ -23,6 +23,11 @@ define( 'REPLIES_IMPORTER_FOR_MASTODON_VERSION', '0.0.1' );
 define( 'REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
+// How many pages of likes, reposts or quotes to fetch for a single Mastodon post.
+if ( ! defined( 'REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES' ) ) {
+	define( 'REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES', 5 );
+}
+
 // Include necessary files.
 require_once REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR . 'includes/debug.php';
 require_once REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR . 'includes/config.php';

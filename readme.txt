@@ -58,6 +58,8 @@ The plugin imports public replies to your Mastodon posts that contain a link to 
 
 That plugin already registers the `like`, `repost` and `quote` comment types, so this one doesn't. It just records the reactions and lets ActivityPub display them. Nothing is overwritten either way, and if you turn ActivityPub on later it picks up the reactions already in your database.
 
+If you've unticked likes or reposts in the ActivityPub settings, this plugin stops importing them. You've already said you don't want them, and ActivityPub won't display them.
+
 = Are likes and reposts held for moderation? =
 
 Yes, the same as replies. Once you've approved a like or repost from an account, later likes and reposts from that same account are approved automatically, so you shouldn't have to moderate the same person twice.

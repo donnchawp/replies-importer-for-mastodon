@@ -63,6 +63,24 @@ foreach ( $cases as $label => $context ) {
 $GLOBALS['rifm_context'] = array();
 assert_true( 'but an ordinary post gets one', 'X' !== $types::append_reactions( 'X' ) );
 
+describe( 'Every link out is nofollow' );
+$GLOBALS['rifm_comments'] = array();
+rifm_seed_comment( array( 'type' => 'like', 'author' => 'Alice', 'author_url' => 'https://mas.to/@alice' ) );
+rifm_seed_comment( array( 'type' => 'repost', 'author' => 'Bob', 'author_url' => 'https://mas.to/@bob' ) );
+rifm_seed_comment( array( 'type' => 'quote', 'author' => 'Carol', 'author_url' => 'https://mas.to/@carol/9', 'content' => 'Worth a look' ) );
+$html = $types::render_reactions( 10 );
+
+preg_match_all( '/<a\s[^>]*>/', $html, $links );
+assert_same( 'every reaction is a link', 3, count( $links[0] ) );
+
+$without_rel = array_filter(
+	$links[0],
+	function ( $tag ) {
+		return false === strpos( $tag, 'rel="external nofollow ugc"' );
+	}
+);
+assert_same( 'and every one of them is external nofollow ugc', array(), array_values( $without_rel ) );
+
 describe( 'Remote text is escaped on the way out' );
 $GLOBALS['rifm_comments'] = array();
 rifm_seed_comment( array( 'type' => 'like', 'author' => '<script>alert(1)</script>', 'author_url' => 'javascript:alert(1)' ) );

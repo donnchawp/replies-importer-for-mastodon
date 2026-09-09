@@ -224,44 +224,81 @@ class Replies_Importer_For_Mastodon_API {
 				// Loop through each reply and add it as a comment
 				$comment_map = array();
 				foreach ( $replies_data['descendants'] as $reply ) {
-					if ( 'private' === $reply['visibility'] || 'direct' === $reply['visibility'] ) {
-						continue;
+					$in_reply_to = isset( $reply['in_reply_to_id'] ) ? $reply['in_reply_to_id'] : null;
+
+					$comment_parent = isset( $comment_map[ $in_reply_to ] ) ? $comment_map[ $in_reply_to ] : 0;
+
+					$comment_id = $this->import_reply( $reply, $post_id, $comment_parent );
+
+					if ( $comment_id ) {
+						$comment_map[ $reply['id'] ] = $comment_id;
 					}
-
-					if ( get_comments( array( 'author_url' => $reply['url'] ) ) ) {
-						$this->debug_log( 'Comment already exists: ' . $reply['url'] );
-						continue;
-					}
-
-					if ( isset( $comment_map[ $reply['in_reply_to_id'] ] ) ) {
-						$comment_parent = $comment_map[ $reply['in_reply_to_id'] ];
-					} else {
-						$comment_parent = 0;
-					}
-					$this->debug_log( "$mastodon_status_id {$reply['id']} parent: {$reply['in_reply_to_id']} => $comment_parent<br />" );
-
-					$commentdata = array(
-						'comment_post_ID'    => $post_id,
-						'comment_author'     => wp_kses_post( $reply['account']['display_name'] ),
-						'comment_author_url' => $reply['url'],
-						'comment_content'    => wp_kses_post( wp_strip_all_tags( $reply['content'] ) ),
-						'comment_type'       => '',
-						'comment_parent'     => $comment_parent,
-						'user_id'            => 0,
-						'comment_author_IP'  => '',
-						'comment_agent'      => 'Mastodon',
-						'comment_date'       => gmdate( 'Y-m-d H:i:s', strtotime( $reply['created_at'] ) ),
-						'comment_approved'   => 0,
-					);
-
-					// Insert new comment and get the new comment ID
-					$comment_id                   = wp_insert_comment( wp_filter_comment( $commentdata ) );
-					$comment_map[ $reply['id'] ]  = $comment_id;
 				}
 
 				$this->import_reactions( $base_api_url, $mastodon_status_id, $post_id );
 			}
 		}
+	}
+
+	/**
+	 * Record one Mastodon reply as a comment.
+	 *
+	 * @param array $reply          The Mastodon status replying to ours.
+	 * @param int   $post_id        The WordPress post ID.
+	 * @param int   $comment_parent The comment this one answers, or 0.
+	 * @return int The new comment ID, or 0 if nothing was written.
+	 */
+	private function import_reply( $reply, $post_id, $comment_parent ) {
+		if ( empty( $reply['url'] ) ) {
+			return 0;
+		}
+
+		if ( isset( $reply['visibility'] ) && in_array( $reply['visibility'], array( 'private', 'direct' ), true ) ) {
+			return 0;
+		}
+
+		if ( get_comments( array( 'author_url' => $reply['url'] ) ) ) {
+			$this->debug_log( 'Comment already exists: ' . $reply['url'] );
+			return 0;
+		}
+
+		$author  = $this->get_account_name( isset( $reply['account'] ) ? $reply['account'] : array() );
+		$content = $this->clean_remote_content( isset( $reply['content'] ) ? $reply['content'] : '' );
+
+		/*
+		 * wp_insert_comment() skips wp_allow_comment(), so the site's Disallowed Comment
+		 * Keys never see a reply. Anyone on the fediverse can put text in here by
+		 * answering one of your posts, the same as they can with a quote.
+		 */
+		if ( wp_check_comment_disallowed_list( $author, '', $reply['url'], $content, '', 'Mastodon' ) ) {
+			$this->debug_log( 'Reply matched the disallowed list, skipping: ' . $reply['url'] );
+			return 0;
+		}
+
+		$timestamp = isset( $reply['created_at'] ) ? strtotime( $reply['created_at'] ) : false;
+		$gm_date   = $timestamp ? gmdate( 'Y-m-d H:i:s', $timestamp ) : current_time( 'mysql', 1 );
+
+		/*
+		 * comment_date is site time and comment_date_gmt is GMT. Setting only the first,
+		 * to a GMT value, left wp_insert_comment() converting an already-converted date
+		 * and replies dated wrong on any site that is not on UTC.
+		 */
+		$commentdata = array(
+			'comment_post_ID'    => $post_id,
+			'comment_author'     => $author,
+			'comment_author_url' => $reply['url'],
+			'comment_content'    => $content,
+			'comment_type'       => '',
+			'comment_parent'     => $comment_parent,
+			'user_id'            => 0,
+			'comment_author_IP'  => '',
+			'comment_agent'      => 'Mastodon',
+			'comment_date'       => get_date_from_gmt( $gm_date ),
+			'comment_date_gmt'   => $gm_date,
+			'comment_approved'   => 0,
+		);
+
+		return (int) wp_insert_comment( wp_filter_comment( $commentdata ) );
 	}
 
 	/**

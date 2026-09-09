@@ -324,7 +324,7 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 			}
 
 			$items .= sprintf(
-				'<li class="rifm-reactions__face"><a href="%1$s" title="%2$s" rel="nofollow external">%3$s</a></li>',
+				'<li class="rifm-reactions__face"><a href="%1$s" title="%2$s" rel="external nofollow ugc">%3$s</a></li>',
 				esc_url( $comment->comment_author_url ),
 				esc_attr( $comment->comment_author ),
 				$avatar
@@ -345,7 +345,7 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 
 		foreach ( $comments as $comment ) {
 			$items .= sprintf(
-				'<li class="rifm-reactions__quote">%1$s<div class="rifm-reactions__quote-body"><a class="rifm-reactions__quote-author" href="%2$s" rel="nofollow external">%3$s</a><p class="rifm-reactions__quote-text">%4$s</p></div></li>',
+				'<li class="rifm-reactions__quote">%1$s<div class="rifm-reactions__quote-body"><a class="rifm-reactions__quote-author" href="%2$s" rel="external nofollow ugc">%3$s</a><p class="rifm-reactions__quote-text">%4$s</p></div></li>',
 				get_avatar( $comment, 40, '', $comment->comment_author ),
 				esc_url( $comment->comment_author_url ),
 				esc_html( $comment->comment_author ),

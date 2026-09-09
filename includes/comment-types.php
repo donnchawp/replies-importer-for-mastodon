@@ -5,8 +5,9 @@
  * Mastodon likes, reposts and quotes are stored as WordPress comments using the
  * same `like`, `repost` and `quote` slugs the ActivityPub plugin uses. When that
  * plugin is active it already registers those types, renders them and keeps them
- * out of comment queries and counts, so this class stays out of its way entirely.
- * Without it, this class provides the same support on its own.
+ * out of comment queries and counts, so this class does no more than top up the
+ * exclusion list its comment count filter builds. Without it, this class provides
+ * the same support on its own.
  *
  * @package RepliesImporterForMastodon
  */
@@ -28,12 +29,54 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 	}
 
 	/**
-	 * Whether the ActivityPub plugin is handling these comment types.
+	 * Whether the ActivityPub plugin is active.
 	 *
 	 * @return bool True if the ActivityPub plugin is active.
 	 */
 	public static function has_activitypub() {
 		return function_exists( 'Activitypub\register_comment_type' );
+	}
+
+	/**
+	 * Whether the ActivityPub plugin is handling a comment type.
+	 *
+	 * Being installed is not the same as handling the type. Likes and reposts are
+	 * checkboxes in the ActivityPub settings, and it drops a type it has switched off
+	 * from the exclusion list its comment count filter builds. So a site running
+	 * ActivityPub with likes turned off would count every imported like towards the
+	 * post's comment count.
+	 *
+	 * @param string $type The comment type slug.
+	 * @return bool True if the ActivityPub plugin is handling this type.
+	 */
+	public static function is_handled_by_activitypub( $type ) {
+		if ( ! self::has_activitypub() ) {
+			return false;
+		}
+
+		// is_comment_type_enabled() arrived with the settings that gate these types.
+		if ( ! method_exists( 'Activitypub\Comment', 'is_comment_type_enabled' ) ) {
+			return true;
+		}
+
+		return (bool) Activitypub\Comment::is_comment_type_enabled( $type );
+	}
+
+	/**
+	 * Whether a reaction of this type is worth importing.
+	 *
+	 * A site owner who unticks likes in the ActivityPub settings has said they don't
+	 * want likes recorded, so there is no point importing them from Mastodon either.
+	 *
+	 * @param string $type The comment type slug.
+	 * @return bool True if reactions of this type should be imported.
+	 */
+	public static function should_import( $type ) {
+		if ( ! self::has_activitypub() ) {
+			return true;
+		}
+
+		return self::is_handled_by_activitypub( $type );
 	}
 
 	/**
@@ -55,9 +98,7 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 				'collection'   => 'likes',
 				'excerpt'      => html_entity_decode( __( '&hellip; liked this!', 'replies-importer-for-mastodon' ) ),
 				/* translators: %s: Number of likes */
-				'count_single' => _x( '%s like', 'number of likes', 'replies-importer-for-mastodon' ),
-				/* translators: %s: Number of likes */
-				'count_plural' => _x( '%s likes', 'number of likes', 'replies-importer-for-mastodon' ),
+				'count'        => _nx_noop( '%s like', '%s likes', 'number of likes', 'replies-importer-for-mastodon' ),
 			),
 			self::REPOST => array(
 				'type'         => self::REPOST,
@@ -68,9 +109,7 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 				'collection'   => 'reposts',
 				'excerpt'      => html_entity_decode( __( '&hellip; reposted this!', 'replies-importer-for-mastodon' ) ),
 				/* translators: %s: Number of reposts */
-				'count_single' => _x( '%s repost', 'number of reposts', 'replies-importer-for-mastodon' ),
-				/* translators: %s: Number of reposts */
-				'count_plural' => _x( '%s reposts', 'number of reposts', 'replies-importer-for-mastodon' ),
+				'count'        => _nx_noop( '%s repost', '%s reposts', 'number of reposts', 'replies-importer-for-mastodon' ),
 			),
 			self::QUOTE  => array(
 				'type'         => self::QUOTE,
@@ -81,9 +120,7 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 				'collection'   => 'quotes',
 				'excerpt'      => html_entity_decode( __( '&hellip; quoted this!', 'replies-importer-for-mastodon' ) ),
 				/* translators: %s: Number of quotes */
-				'count_single' => _x( '%s quote', 'number of quotes', 'replies-importer-for-mastodon' ),
-				/* translators: %s: Number of quotes */
-				'count_plural' => _x( '%s quotes', 'number of quotes', 'replies-importer-for-mastodon' ),
+				'count'        => _nx_noop( '%s quote', '%s quotes', 'number of quotes', 'replies-importer-for-mastodon' ),
 			),
 		);
 	}
@@ -117,6 +154,14 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 	 */
 	public static function register() {
 		if ( self::has_activitypub() ) {
+			/*
+			 * ActivityPub builds its comment count exclusion list from the types it has
+			 * switched on, so a type the site owner disabled there stops being excluded
+			 * and starts counting. Adding our slugs back through its own extension point
+			 * keeps the count right without hooking the filter ourselves, which would
+			 * fight with its handler. Added in ActivityPub 8.0.
+			 */
+			add_filter( 'activitypub_excluded_comment_types', array( __CLASS__, 'exclude_from_activitypub_count' ) );
 			return;
 		}
 
@@ -157,6 +202,16 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 			return $content;
 		}
 
+		// the_content also runs for single post and comment feeds.
+		if ( is_feed() ) {
+			return $content;
+		}
+
+		// Don't disclose who reacted to a post the reader hasn't unlocked.
+		if ( post_password_required() ) {
+			return $content;
+		}
+
 		return $content . self::render_reactions( get_the_ID() );
 	}
 
@@ -167,14 +222,57 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 	 * @return string The markup, or an empty string if the post has no reactions.
 	 */
 	public static function render_reactions( $post_id ) {
+		/*
+		 * One cheap COUNT to get out of the way of the great majority of posts, which
+		 * have no reactions at all and would otherwise pay for a query per type on every
+		 * single view.
+		 */
+		$total = get_comments(
+			array(
+				'post_id'  => $post_id,
+				'type__in' => self::get_slugs(),
+				'status'   => 'approve',
+				'count'    => true,
+			)
+		);
+
+		if ( ! $total ) {
+			return '';
+		}
+
+		/**
+		 * Filters how many avatars to render per reaction type.
+		 *
+		 * The count in the heading is always the real total; this only caps how many
+		 * faces are drawn, so a post with thousands of likes stays a sane page.
+		 *
+		 * @param int $limit   Maximum avatars per type.
+		 * @param int $post_id The post ID.
+		 */
+		$limit = (int) apply_filters( 'replies_importer_for_mastodon_max_faces', 50, $post_id );
+
 		$sections = '';
 
 		foreach ( self::get_types() as $slug => $type ) {
+			$count = (int) get_comments(
+				array(
+					'post_id' => $post_id,
+					'type'    => $slug,
+					'status'  => 'approve',
+					'count'   => true,
+				)
+			);
+
+			if ( ! $count ) {
+				continue;
+			}
+
 			$comments = get_comments(
 				array(
 					'post_id' => $post_id,
 					'type'    => $slug,
 					'status'  => 'approve',
+					'number'  => $limit,
 				)
 			);
 
@@ -182,10 +280,8 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 				continue;
 			}
 
-			$count = count( $comments );
 			$label = sprintf(
-				// phpcs:ignore WordPress.WP.I18n
-				_n( $type['count_single'], $type['count_plural'], $count, 'replies-importer-for-mastodon' ),
+				translate_nooped_plural( $type['count'], $count, 'replies-importer-for-mastodon' ),
 				number_format_i18n( $count )
 			);
 
@@ -258,6 +354,16 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 		}
 
 		return '<ul class="rifm-reactions__quotes">' . $items . '</ul>';
+	}
+
+	/**
+	 * Add our comment types to ActivityPub's comment count exclusion list.
+	 *
+	 * @param string[] $types The comment type slugs ActivityPub is excluding.
+	 * @return string[] The list, with ours added.
+	 */
+	public static function exclude_from_activitypub_count( $types ) {
+		return array_unique( array_merge( (array) $types, self::get_slugs() ) );
 	}
 
 	/**
@@ -379,12 +485,16 @@ class Replies_Importer_For_Mastodon_Comment_Types {
 		}
 
 		/** This filter is documented in wp-includes/link-template.php */
-		$args['url']     = apply_filters( 'get_avatar_url', $avatar, $id_or_email, $args );
-		$args['class'][] = 'avatar';
-		$args['class'][] = 'avatar-mastodon';
-		$args['class'][] = 'avatar-' . (int) $args['size'];
-		$args['class'][] = 'photo';
-		$args['class']   = array_unique( $args['class'] );
+		$args['url'] = apply_filters( 'get_avatar_url', $avatar, $id_or_email, $args );
+
+		/*
+		 * get_avatar() adds avatar, avatar-{size} and photo itself, and adds
+		 * avatar-default unless found_avatar says a real one turned up. Without this the
+		 * Mastodon avatars all render as avatar-default and themes style them as missing.
+		 */
+		$args['found_avatar'] = true;
+		$args['class'][]      = 'avatar-mastodon';
+		$args['class']        = array_unique( $args['class'] );
 
 		return $args;
 	}

@@ -72,6 +72,10 @@ Nothing. Once a like or repost is recorded it stays until you delete the comment
 
 Quote posts arrived in Mastodon 4.5, and the endpoint this plugin uses doesn't exist on older instances. If yours predates that, replies, likes and reposts still import as normal.
 
+= Is there a limit on how many likes or reposts are imported? =
+
+Yes. The plugin reads up to 25 pages of each. Mastodon sends 40 accounts to a page, so that is 1,000 likes and 1,000 reposts for one post. Quotes come 20 to a page, so 500 of those. If a post goes past that, the rest are not imported and the debug log says so. Raise `REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES` if you need more.
+
 = Why did an import stop early? =
 
 Each Mastodon post now costs several API calls, so a busy account can take longer than PHP allows. The import watches the clock and stops on its own before it gets killed, which keeps the debug log honest about why it stopped. Nothing already imported is lost, and the next run carries on. If yours regularly stops early, raise `REPLIES_IMPORTER_FOR_MASTODON_MAX_RUN_SECONDS`, or import hourly instead of daily so there is less to do each time.

@@ -23,9 +23,15 @@ define( 'REPLIES_IMPORTER_FOR_MASTODON_VERSION', '0.0.1' );
 define( 'REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 
-// How many pages of likes, reposts or quotes to fetch for a single Mastodon post.
+/*
+ * How many pages of likes, reposts or quotes to fetch for a single Mastodon post.
+ * Mastodon sends 40 accounts per page, so 25 pages covers a post with up to 1,000 likes
+ * and 1,000 reposts. Quotes come 20 to a page, so 500 of those. Past that the importer
+ * stops and says so in the debug log, and the time budget below stops a very popular
+ * post using the whole run.
+ */
 if ( ! defined( 'REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES' ) ) {
-	define( 'REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES', 5 );
+	define( 'REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES', 25 );
 }
 
 // The longest an import run may take, whatever PHP itself allows.

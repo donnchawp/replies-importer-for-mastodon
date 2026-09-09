@@ -18,6 +18,10 @@
 
 define( 'RIFM_PLUGIN_DIR', dirname( __DIR__ ) );
 
+/*
+ * Deliberately smaller than the value the plugin ships, to keep the tests quick. They
+ * check that paging stops at whatever this is, not that the shipped number is right.
+ */
 if ( ! defined( 'REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES' ) ) {
 	define( 'REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES', 5 );
 }

@@ -49,10 +49,12 @@ $results                   = call_private( $api, 'get_paged_results', array( $ba
 assert_same( 'both pages are merged', 2, count( $results ) );
 assert_same( 'the second request used the next link', 'https://mas.to/api/v1/statuses/1/favourited_by?max_id=2', $GLOBALS['rifm_requested'][1] );
 
-$GLOBALS['rifm_http']      = array_fill( 0, 10, rifm_response( array( array( 'url' => 'https://mas.to/@x' ) ), '<https://mas.to/next>; rel="next"' ) );
+// More pages available than the cap allows, whatever the cap is set to.
+$GLOBALS['rifm_http']      = array_fill( 0, REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES + 5, rifm_response( array( array( 'url' => 'https://mas.to/@x' ) ), '<https://mas.to/next>; rel="next"' ) );
 $GLOBALS['rifm_requested'] = array();
 $results                   = call_private( $api, 'get_paged_results', array( $base, $base . '/start' ) );
 assert_same( 'paging stops at the page cap', REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES, count( $GLOBALS['rifm_requested'] ) );
+assert_same( 'and keeps everything it fetched', REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES, count( $results ) );
 
 describe( 'Requirement 9: a missing endpoint or a failure gives nothing' );
 $GLOBALS['rifm_http'] = array( array( 'code' => 404, 'body' => '{}', 'headers' => array() ) );

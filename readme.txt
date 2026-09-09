@@ -72,6 +72,10 @@ Nothing. Once a like or repost is recorded it stays until you delete the comment
 
 Quote posts arrived in Mastodon 4.5, and the endpoint this plugin uses doesn't exist on older instances. If yours predates that, replies, likes and reposts still import as normal.
 
+= Why did an import stop early? =
+
+Each Mastodon post now costs several API calls, so a busy account can take longer than PHP allows. The import watches the clock and stops on its own before it gets killed, which keeps the debug log honest about why it stopped. Nothing already imported is lost, and the next run carries on. If yours regularly stops early, raise `REPLIES_IMPORTER_FOR_MASTODON_MAX_RUN_SECONDS`, or import hourly instead of daily so there is less to do each time.
+
 = Why is the date on a like wrong? =
 
 Mastodon's API gives you the accounts that liked or boosted a post, but not when they did it. The import time is used instead. Quotes carry their real date.

@@ -28,6 +28,11 @@ if ( ! defined( 'REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES' ) ) {
 	define( 'REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES', 5 );
 }
 
+// The longest an import run may take, whatever PHP itself allows.
+if ( ! defined( 'REPLIES_IMPORTER_FOR_MASTODON_MAX_RUN_SECONDS' ) ) {
+	define( 'REPLIES_IMPORTER_FOR_MASTODON_MAX_RUN_SECONDS', 60 );
+}
+
 // Include necessary files.
 require_once REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR . 'includes/debug.php';
 require_once REPLIES_IMPORTER_FOR_MASTODON_PLUGIN_DIR . 'includes/config.php';

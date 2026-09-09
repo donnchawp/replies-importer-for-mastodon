@@ -9,6 +9,13 @@ class Replies_Importer_For_Mastodon_API {
 	use Replies_Importer_For_Mastodon_Logger;
 	private $config;
 
+	/**
+	 * Unix time this import run has to finish by, or 0 when no run is in progress.
+	 *
+	 * @var int
+	 */
+	private $deadline = 0;
+
 	public function __construct() {
 		$this->config = Replies_Importer_For_Mastodon_Config::get_instance();
 	}
@@ -156,11 +163,18 @@ class Replies_Importer_For_Mastodon_API {
 		$rss_body = wp_remote_retrieve_body( $response );
 		$rss      = simplexml_load_string( $rss_body );
 
+		$this->start_time_budget();
+
 		$parsed_url   = wp_parse_url( $mastodon_rss_url );
 		$base_api_url = $parsed_url['scheme'] . '://' . $parsed_url['host'];
 
 		// Iterate over each item in the RSS feed
 		foreach ( $rss->channel->item as $item ) {
+			if ( $this->out_of_time() ) {
+				$this->debug_log( 'Out of time, stopping before the next Mastodon post' );
+				break;
+			}
+
 			$content = (string) $item->description;
 
 			// Check if the Mastodon post contains any URL from your website
@@ -251,6 +265,41 @@ class Replies_Importer_For_Mastodon_API {
 	}
 
 	/**
+	 * Start the clock on an import run.
+	 *
+	 * Each Mastodon post now costs several HTTP requests, so a busy account can take
+	 * longer than PHP will allow. Being killed part way through loses nothing already
+	 * written, but it does mean the run never gets to tidy up or log why it stopped.
+	 * Stopping on our own terms is easier to follow in the debug log.
+	 */
+	private function start_time_budget() {
+		$limit = (int) ini_get( 'max_execution_time' );
+
+		// 0 means no limit, which is normal under WP-CLI and some cron setups.
+		if ( $limit <= 0 ) {
+			$limit = REPLIES_IMPORTER_FOR_MASTODON_MAX_RUN_SECONDS;
+		}
+
+		// Leave a fifth of the limit spare so the last request has room to come back.
+		$budget = (int) floor( $limit * 0.8 );
+		$budget = min( $budget, REPLIES_IMPORTER_FOR_MASTODON_MAX_RUN_SECONDS );
+		$budget = max( 5, $budget );
+
+		$this->deadline = time() + $budget;
+
+		$this->debug_log( 'Import has ' . $budget . ' seconds' );
+	}
+
+	/**
+	 * Whether this import run has used up its time.
+	 *
+	 * @return bool True if the run should stop.
+	 */
+	private function out_of_time() {
+		return $this->deadline > 0 && time() >= $this->deadline;
+	}
+
+	/**
 	 * Import likes, reposts and quotes for a single Mastodon status.
 	 *
 	 * @param string $base_api_url       The Mastodon instance base URL.
@@ -305,6 +354,11 @@ class Replies_Importer_For_Mastodon_API {
 		$pages   = 0;
 
 		while ( $url && $pages < REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES ) {
+			if ( $this->out_of_time() ) {
+				$this->debug_log( 'Out of time, stopping after page ' . $pages . ' of ' . $url );
+				break;
+			}
+
 			++$pages;
 
 			$response = wp_safe_remote_get(

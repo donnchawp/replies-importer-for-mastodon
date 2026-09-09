@@ -9,6 +9,13 @@ class Replies_Importer_For_Mastodon_API {
 	use Replies_Importer_For_Mastodon_Logger;
 	private $config;
 
+	/**
+	 * Unix time this import run has to finish by, or 0 when no run is in progress.
+	 *
+	 * @var int
+	 */
+	private $deadline = 0;
+
 	public function __construct() {
 		$this->config = Replies_Importer_For_Mastodon_Config::get_instance();
 	}
@@ -156,11 +163,18 @@ class Replies_Importer_For_Mastodon_API {
 		$rss_body = wp_remote_retrieve_body( $response );
 		$rss      = simplexml_load_string( $rss_body );
 
+		$this->start_time_budget();
+
 		$parsed_url   = wp_parse_url( $mastodon_rss_url );
 		$base_api_url = $parsed_url['scheme'] . '://' . $parsed_url['host'];
 
 		// Iterate over each item in the RSS feed
 		foreach ( $rss->channel->item as $item ) {
+			if ( $this->out_of_time() ) {
+				$this->debug_log( 'Out of time, stopping before the next Mastodon post' );
+				break;
+			}
+
 			$content = (string) $item->description;
 
 			// Check if the Mastodon post contains any URL from your website
@@ -210,42 +224,486 @@ class Replies_Importer_For_Mastodon_API {
 				// Loop through each reply and add it as a comment
 				$comment_map = array();
 				foreach ( $replies_data['descendants'] as $reply ) {
-					if ( 'private' === $reply['visibility'] || 'direct' === $reply['visibility'] ) {
-						continue;
+					$in_reply_to = isset( $reply['in_reply_to_id'] ) ? $reply['in_reply_to_id'] : null;
+
+					$comment_parent = isset( $comment_map[ $in_reply_to ] ) ? $comment_map[ $in_reply_to ] : 0;
+
+					$comment_id = $this->import_reply( $reply, $post_id, $comment_parent );
+
+					if ( $comment_id ) {
+						$comment_map[ $reply['id'] ] = $comment_id;
 					}
+				}
 
-					if ( get_comments( array( 'author_url' => $reply['url'] ) ) ) {
-						$this->debug_log( 'Comment already exists: ' . $reply['url'] );
-						continue;
-					}
+				$this->import_reactions( $base_api_url, $mastodon_status_id, $post_id );
+			}
+		}
+	}
 
-					if ( isset( $comment_map[ $reply['in_reply_to_id'] ] ) ) {
-						$comment_parent = $comment_map[ $reply['in_reply_to_id'] ];
-					} else {
-						$comment_parent = 0;
-					}
-					$this->debug_log( "$mastodon_status_id {$reply['id']} parent: {$reply['in_reply_to_id']} => $comment_parent<br />" );
+	/**
+	 * Record one Mastodon reply as a comment.
+	 *
+	 * @param array $reply          The Mastodon status replying to ours.
+	 * @param int   $post_id        The WordPress post ID.
+	 * @param int   $comment_parent The comment this one answers, or 0.
+	 * @return int The new comment ID, or 0 if nothing was written.
+	 */
+	private function import_reply( $reply, $post_id, $comment_parent ) {
+		if ( empty( $reply['url'] ) ) {
+			return 0;
+		}
 
-					$commentdata = array(
-						'comment_post_ID'    => $post_id,
-						'comment_author'     => wp_kses_post( $reply['account']['display_name'] ),
-						'comment_author_url' => $reply['url'],
-						'comment_content'    => wp_kses_post( wp_strip_all_tags( $reply['content'] ) ),
-						'comment_type'       => '',
-						'comment_parent'     => $comment_parent,
-						'user_id'            => 0,
-						'comment_author_IP'  => '',
-						'comment_agent'      => 'Mastodon',
-						'comment_date'       => gmdate( 'Y-m-d H:i:s', strtotime( $reply['created_at'] ) ),
-						'comment_approved'   => 0,
-					);
+		if ( isset( $reply['visibility'] ) && in_array( $reply['visibility'], array( 'private', 'direct' ), true ) ) {
+			return 0;
+		}
 
-					// Insert new comment and get the new comment ID
-					$comment_id                   = wp_insert_comment( wp_filter_comment( $commentdata ) );
-					$comment_map[ $reply['id'] ]  = $comment_id;
+		if ( get_comments( array( 'author_url' => $reply['url'] ) ) ) {
+			$this->debug_log( 'Comment already exists: ' . $reply['url'] );
+			return 0;
+		}
+
+		$author  = $this->get_account_name( isset( $reply['account'] ) ? $reply['account'] : array() );
+		$content = $this->clean_remote_content( isset( $reply['content'] ) ? $reply['content'] : '' );
+
+		/*
+		 * wp_insert_comment() skips wp_allow_comment(), so the site's Disallowed Comment
+		 * Keys never see a reply. Anyone on the fediverse can put text in here by
+		 * answering one of your posts, the same as they can with a quote.
+		 */
+		if ( wp_check_comment_disallowed_list( $author, '', $reply['url'], $content, '', 'Mastodon' ) ) {
+			$this->debug_log( 'Reply matched the disallowed list, skipping: ' . $reply['url'] );
+			return 0;
+		}
+
+		$timestamp = isset( $reply['created_at'] ) ? strtotime( $reply['created_at'] ) : false;
+		$gm_date   = $timestamp ? gmdate( 'Y-m-d H:i:s', $timestamp ) : current_time( 'mysql', 1 );
+
+		/*
+		 * comment_date is site time and comment_date_gmt is GMT. Setting only the first,
+		 * to a GMT value, left wp_insert_comment() converting an already-converted date
+		 * and replies dated wrong on any site that is not on UTC.
+		 */
+		$commentdata = array(
+			'comment_post_ID'    => $post_id,
+			'comment_author'     => $author,
+			'comment_author_url' => $reply['url'],
+			'comment_content'    => $content,
+			'comment_type'       => '',
+			'comment_parent'     => $comment_parent,
+			'user_id'            => 0,
+			'comment_author_IP'  => '',
+			'comment_agent'      => 'Mastodon',
+			'comment_date'       => get_date_from_gmt( $gm_date ),
+			'comment_date_gmt'   => $gm_date,
+			'comment_approved'   => 0,
+		);
+
+		return (int) wp_insert_comment( wp_filter_comment( $commentdata ) );
+	}
+
+	/**
+	 * Start the clock on an import run.
+	 *
+	 * Each Mastodon post now costs several HTTP requests, so a busy account can take
+	 * longer than PHP will allow. Being killed part way through loses nothing already
+	 * written, but it does mean the run never gets to tidy up or log why it stopped.
+	 * Stopping on our own terms is easier to follow in the debug log.
+	 */
+	private function start_time_budget() {
+		$limit = (int) ini_get( 'max_execution_time' );
+
+		// 0 means no limit, which is normal under WP-CLI and some cron setups.
+		if ( $limit <= 0 ) {
+			$limit = REPLIES_IMPORTER_FOR_MASTODON_MAX_RUN_SECONDS;
+		}
+
+		// Leave a fifth of the limit spare so the last request has room to come back.
+		$budget = (int) floor( $limit * 0.8 );
+		$budget = min( $budget, REPLIES_IMPORTER_FOR_MASTODON_MAX_RUN_SECONDS );
+		$budget = max( 5, $budget );
+
+		$this->deadline = time() + $budget;
+
+		$this->debug_log( 'Import has ' . $budget . ' seconds' );
+	}
+
+	/**
+	 * Whether this import run has used up its time.
+	 *
+	 * @return bool True if the run should stop.
+	 */
+	private function out_of_time() {
+		return $this->deadline > 0 && time() >= $this->deadline;
+	}
+
+	/**
+	 * Import likes, reposts and quotes for a single Mastodon status.
+	 *
+	 * @param string $base_api_url       The Mastodon instance base URL.
+	 * @param string $mastodon_status_id The Mastodon status ID.
+	 * @param int    $post_id            The WordPress post ID.
+	 */
+	private function import_reactions( $base_api_url, $mastodon_status_id, $post_id ) {
+		$status_url = $base_api_url . '/api/v1/statuses/' . $mastodon_status_id;
+		$types      = 'Replies_Importer_For_Mastodon_Comment_Types';
+
+		$endpoints = array(
+			$types::LIKE   => '/favourited_by',
+			$types::REPOST => '/reblogged_by',
+			$types::QUOTE  => '/quotes',
+		);
+
+		foreach ( $endpoints as $type => $endpoint ) {
+			/*
+			 * Nothing displays a type the ActivityPub plugin has switched off, so importing
+			 * it would only write rows the site owner has already said they don't want.
+			 */
+			if ( ! $types::should_import( $type ) ) {
+				$this->debug_log( 'Skipping ' . $type . ': disabled in the ActivityPub plugin' );
+				continue;
+			}
+
+			// Quote posts arrived in Mastodon 4.5; older instances 404 on that endpoint.
+			$results = $this->get_paged_results( $base_api_url, $status_url . $endpoint, $types::QUOTE === $type );
+
+			foreach ( $results as $result ) {
+				if ( $types::QUOTE === $type ) {
+					$this->import_quote( $result, $post_id );
+				} else {
+					$this->import_account_reaction( $result, $post_id, $type );
 				}
 			}
 		}
+	}
+
+	/**
+	 * Fetch every page of a Mastodon collection endpoint.
+	 *
+	 * Follows the `next` link relation in the Link header. Capped at
+	 * REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES pages so one very popular post cannot
+	 * stall an import run.
+	 *
+	 * @param string $url The endpoint URL.
+	 * @return array The combined results, empty on any failure.
+	 */
+	private function get_paged_results( $base_api_url, $url, $allow_404 = false ) {
+		$results = array();
+		$pages   = 0;
+
+		while ( $url && $pages < REPLIES_IMPORTER_FOR_MASTODON_MAX_PAGES ) {
+			if ( $this->out_of_time() ) {
+				$this->debug_log( 'Out of time, stopping after page ' . $pages . ' of ' . $url );
+				break;
+			}
+
+			++$pages;
+
+			$response = wp_safe_remote_get(
+				$url,
+				array(
+					'headers' => array( 'Authorization' => 'Bearer ' . $this->config->get_connection_option( 'access_token' ) ),
+				)
+			);
+
+			if ( is_wp_error( $response ) ) {
+				$this->debug_log( 'Failed to fetch ' . $url . ': ' . $response->get_error_message() );
+				break;
+			}
+
+			$code = wp_remote_retrieve_response_code( $response );
+
+			if ( 404 === $code && $allow_404 ) {
+				$this->debug_log( 'Endpoint not available on this instance: ' . $url );
+				break;
+			}
+
+			if ( 200 !== $code ) {
+				$this->debug_log( 'Unexpected response ' . $code . ' from ' . $url );
+				break;
+			}
+
+			$page = json_decode( wp_remote_retrieve_body( $response ), true );
+			if ( ! is_array( $page ) || empty( $page ) ) {
+				break;
+			}
+
+			$results = array_merge( $results, $page );
+			$url     = $this->get_next_page_url( $response, $base_api_url );
+		}
+
+		return $results;
+	}
+
+	/**
+	 * Extract the `next` URL from a response's Link header.
+	 *
+	 * The Link header comes from the remote instance, and the URL in it is fetched with
+	 * our access token attached, so it is only followed when it stays on the instance we
+	 * were already talking to. Without that check a hostile instance could walk us onto
+	 * localhost, a cloud metadata endpoint, or anything else the server can reach.
+	 *
+	 * @param array|WP_Error $response     The response from wp_safe_remote_get().
+	 * @param string         $base_api_url The instance we are talking to.
+	 * @return string The next page URL, or an empty string if there is none.
+	 */
+	private function get_next_page_url( $response, $base_api_url ) {
+		$link = wp_remote_retrieve_header( $response, 'link' );
+
+		if ( is_array( $link ) ) {
+			$link = implode( ', ', $link );
+		}
+
+		if ( empty( $link ) || ! preg_match( '/<([^>]+)>;\s*rel="next"/', $link, $matches ) ) {
+			return '';
+		}
+
+		$next = $matches[1];
+		$base = wp_parse_url( $base_api_url );
+		$to   = wp_parse_url( $next );
+
+		if ( empty( $to['host'] ) || empty( $base['host'] ) ) {
+			return '';
+		}
+
+		if ( strtolower( $to['host'] ) !== strtolower( $base['host'] ) ) {
+			$this->debug_log( 'Refusing to follow off-instance next link: ' . $next );
+			return '';
+		}
+
+		$scheme = isset( $to['scheme'] ) ? strtolower( $to['scheme'] ) : '';
+		if ( ! isset( $base['scheme'] ) || $scheme !== strtolower( $base['scheme'] ) ) {
+			$this->debug_log( 'Refusing to follow next link with a different scheme: ' . $next );
+			return '';
+		}
+
+		return $next;
+	}
+
+	/**
+	 * Record a like or repost from a Mastodon account.
+	 *
+	 * @param array  $account The Mastodon account.
+	 * @param int    $post_id The WordPress post ID.
+	 * @param string $type    The comment type slug.
+	 */
+	private function import_account_reaction( $account, $post_id, $type ) {
+		if ( empty( $account['url'] ) ) {
+			return;
+		}
+
+		$reaction = Replies_Importer_For_Mastodon_Comment_Types::get_type( $type );
+
+		/*
+		 * The favourited_by and reblogged_by endpoints return accounts, not statuses, so
+		 * there is no timestamp for the reaction itself and the import time is the best
+		 * available date.
+		 */
+		$this->insert_reaction_comment(
+			array(
+				'comment_post_ID'      => $post_id,
+				'comment_author'       => $this->get_account_name( $account ),
+				'comment_author_url'   => $account['url'],
+				'comment_author_email' => $this->get_account_email( $account ),
+				'comment_content'      => $reaction['excerpt'],
+				'comment_type'         => $type,
+				'comment_date'         => current_time( 'mysql' ),
+				'comment_date_gmt'     => current_time( 'mysql', 1 ),
+			),
+			$account
+		);
+	}
+
+	/**
+	 * Record a quote of one of our posts.
+	 *
+	 * @param array $quote   The Mastodon status quoting our post.
+	 * @param int   $post_id The WordPress post ID.
+	 */
+	private function import_quote( $quote, $post_id ) {
+		if ( empty( $quote['url'] ) || empty( $quote['account'] ) ) {
+			return;
+		}
+
+		if ( isset( $quote['visibility'] ) && in_array( $quote['visibility'], array( 'private', 'direct' ), true ) ) {
+			return;
+		}
+
+		$author  = $this->get_account_name( $quote['account'] );
+		$content = $this->clean_remote_content( isset( $quote['content'] ) ? $quote['content'] : '' );
+
+		/*
+		 * wp_insert_comment() skips wp_allow_comment(), so the site's Disallowed Comment
+		 * Keys never get a look at this. Replies and quotes are the only reactions
+		 * carrying text a stranger wrote, so check them here.
+		 */
+		$email = $this->get_account_email( $quote['account'] );
+
+		if ( wp_check_comment_disallowed_list( $author, $email, $quote['url'], $content, '', 'Mastodon' ) ) {
+			$this->debug_log( 'Quote matched the disallowed list, skipping: ' . $quote['url'] );
+			return;
+		}
+
+		$timestamp = isset( $quote['created_at'] ) ? strtotime( $quote['created_at'] ) : false;
+		$gm_date   = $timestamp ? gmdate( 'Y-m-d H:i:s', $timestamp ) : current_time( 'mysql', 1 );
+
+		$this->insert_reaction_comment(
+			array(
+				'comment_post_ID'      => $post_id,
+				'comment_author'       => $author,
+				'comment_author_url'   => $quote['url'],
+				'comment_author_email' => $email,
+				'comment_content'      => $content,
+				'comment_type'         => Replies_Importer_For_Mastodon_Comment_Types::QUOTE,
+				'comment_date'         => get_date_from_gmt( $gm_date ),
+				'comment_date_gmt'     => $gm_date,
+			),
+			$quote['account']
+		);
+	}
+
+	/**
+	 * Turn a Mastodon HTML status body into plain comment text.
+	 *
+	 * Mastodon sends HTML, so stripping the tags on its own leaves the entities behind
+	 * and readers see `&amp;` and `&#39;` in the text.
+	 *
+	 * @param string $content The status content.
+	 * @return string The plain text.
+	 */
+	private function clean_remote_content( $content ) {
+		$content = wp_strip_all_tags( $content );
+		$content = html_entity_decode( $content, ENT_QUOTES, 'UTF-8' );
+
+		return sanitize_textarea_field( $content );
+	}
+
+	/**
+	 * Insert a reaction comment, skipping duplicates.
+	 *
+	 * @param array $commentdata The comment data.
+	 * @param array $account     The Mastodon account behind the reaction.
+	 */
+	private function insert_reaction_comment( $commentdata, $account ) {
+		$existing = get_comments(
+			array(
+				'post_id'    => $commentdata['comment_post_ID'],
+				'type'       => $commentdata['comment_type'],
+				'author_url' => $commentdata['comment_author_url'],
+				'status'     => 'any',
+				'count'      => true,
+			)
+		);
+
+		if ( $existing ) {
+			$this->debug_log( $commentdata['comment_type'] . ' already recorded: ' . $commentdata['comment_author_url'] );
+			return;
+		}
+
+		$commentdata['comment_parent']    = 0;
+		$commentdata['user_id']           = 0;
+		$commentdata['comment_author_IP'] = '';
+		$commentdata['comment_agent']     = 'Mastodon';
+		$commentdata['comment_approved']  = $this->is_known_account( $account ) ? 1 : 0;
+
+		$comment_id = wp_insert_comment( wp_filter_comment( $commentdata ) );
+
+		if ( ! $comment_id ) {
+			$this->debug_log( 'Failed to insert ' . $commentdata['comment_type'] . ' for ' . $commentdata['comment_author_url'] );
+			return;
+		}
+
+		if ( ! empty( $account['avatar_static'] ) ) {
+			add_comment_meta( $comment_id, 'avatar_url', esc_url_raw( $account['avatar_static'] ) );
+		}
+
+		if ( ! empty( $account['url'] ) ) {
+			add_comment_meta( $comment_id, 'mastodon_account_url', esc_url_raw( $account['url'] ) );
+		}
+	}
+
+	/**
+	 * Whether an account already has an approved like or repost on this site.
+	 *
+	 * Approving a reaction from an account whose earlier reaction was approved saves
+	 * moderating the same person over and over.
+	 *
+	 * @param array $account The Mastodon account.
+	 * @return bool True if the account has an approved like or repost.
+	 */
+	private function is_known_account( $account ) {
+		/*
+		 * Matched on comment_author_email, which is indexed, rather than on the
+		 * mastodon_account_url meta: meta_value has no usable index, and this runs once
+		 * per imported reaction. An account with no usable identifier is never known,
+		 * otherwise an empty email would match every anonymous comment on the site.
+		 */
+		$email = $this->get_account_email( $account );
+
+		if ( empty( $email ) ) {
+			return false;
+		}
+
+		return (bool) get_comments(
+			array(
+				'author_email' => $email,
+				'type__in'     => array(
+					Replies_Importer_For_Mastodon_Comment_Types::LIKE,
+					Replies_Importer_For_Mastodon_Comment_Types::REPOST,
+				),
+				'status'       => 'approve',
+				'count'        => true,
+			)
+		);
+	}
+
+	/**
+	 * Get a display name for a Mastodon account.
+	 *
+	 * @param array $account The Mastodon account.
+	 * @return string The display name.
+	 */
+	private function get_account_name( $account ) {
+		if ( ! empty( $account['display_name'] ) ) {
+			return sanitize_text_field( $account['display_name'] );
+		}
+
+		if ( ! empty( $account['acct'] ) ) {
+			return sanitize_text_field( $account['acct'] );
+		}
+
+		// Better an instance host in the avatar's alt text than nothing at all.
+		$host = wp_parse_url( isset( $account['url'] ) ? $account['url'] : '', PHP_URL_HOST );
+
+		return $host ? sanitize_text_field( $host ) : __( 'Someone on Mastodon', 'replies-importer-for-mastodon' );
+	}
+
+	/**
+	 * Get an email-shaped identifier for a Mastodon account.
+	 *
+	 * Mastodon's `acct` is bare for local accounts, so the instance host is appended to
+	 * give every account a stable user@host identifier.
+	 *
+	 * @param array $account The Mastodon account.
+	 * @return string The identifier, or an empty string if it cannot be built.
+	 */
+	private function get_account_email( $account ) {
+		if ( empty( $account['acct'] ) ) {
+			return '';
+		}
+
+		$acct = $account['acct'];
+
+		if ( false === strpos( $acct, '@' ) ) {
+			$host = wp_parse_url( $account['url'] ?? '', PHP_URL_HOST );
+
+			if ( ! $host ) {
+				return '';
+			}
+
+			$acct .= '@' . $host;
+		}
+
+		return is_email( $acct ) ? $acct : '';
 	}
 
 	/**
